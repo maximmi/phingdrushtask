@@ -33,10 +33,6 @@ class DrushOption {
     return $this->name;
   }
 
-  public function setValue($str) {
-    $this->value = $str;
-  }
-
   public function addText($str) {
     $this->value = $str;
   }
@@ -75,7 +71,8 @@ class DrushTask extends Task {
   private $return_property = NULL;
   private $verbose = FALSE;
   private $haltonerror = TRUE;
-  private $alias = NULL;
+  private $proxy = '';
+  private $workpath = NULL;
 
   /**
    * The Drush command to run.
@@ -90,6 +87,14 @@ class DrushTask extends Task {
   public function setBin($str) {
     $this->bin = $str;
   }
+
+  /**
+   * Proxy to use drush download
+   */
+  public function setProxy($str) {
+    $this->proxy = $str;
+  }
+
 
   /**
    * Drupal root directory to use.
@@ -155,7 +160,7 @@ class DrushTask extends Task {
   }
 
   /**
-   * The name of a Phing property to assign the Drush command's output to.
+   * Shoukld the task fail on Drush error (non zero exit code)
    */
   public function setHaltonerror($var) {
     if (is_string($var)) {
@@ -195,15 +200,12 @@ class DrushTask extends Task {
     }
   }
 
+
   /**
-   * Site alias.
+   * Define workpath for command execution.
    */
-  public function setAlias($var) {
-    if (is_string($var)) {
-      $this->alias = $var;
-    } else {
-      $this->alias = NULL;
-    }
+  public function setWorkpath($path) {
+    $this->workpath = $path;
   }
 
   /**
@@ -214,6 +216,7 @@ class DrushTask extends Task {
     $this->root = $this->getProject()->getProperty('drush.root');
     $this->uri = $this->getProject()->getProperty('drush.uri');
     $this->bin = $this->getProject()->getProperty('drush.bin');
+    $this->proxy = $this->getProject()->getProperty('drush.proxy');
   }
 
   /**
@@ -221,12 +224,12 @@ class DrushTask extends Task {
    */
   public function main() {
     $command = array();
+    
+    if ($this->proxy) {
+      $command[] = "http_proxy=\"http://$this->proxy/\"";
+    }
 
     $command[] = !empty($this->bin) ? $this->bin : 'drush';
-
-    if (!empty($this->alias)) {
-      $command[] = $this->alias;
-    }
 
     $option = new DrushOption();
     $option->setName('nocolor');
@@ -282,10 +285,22 @@ class DrushTask extends Task {
 
     $command = implode(' ', $command);
 
+    $cwd = getcwd();
+    $need_chdir = FALSE;
+
+    if ($this->workpath) {
+      $need_chdir = chdir($this->workpath);
+    }
+
     // Execute Drush.
     $this->log("Executing '$command'...");
     $output = array();
     exec($command, $output, $return);
+
+    if ($need_chdir) {
+      chdir($cwd);
+    }
+
     // Collect Drush output for display through Phing's log.
     foreach ($output as $line) {
       $this->log($line);
